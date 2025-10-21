@@ -39,21 +39,21 @@ module.exports = async (req, res) => {
     
     // Set content
     await page.setContent(htmlContent, {
-      waitUntil: 'networkidle0',
+      waitUntil: 'domcontentloaded',
     });
 
     // Wait for any dynamic content to load
-    await page.waitForTimeout(1000);
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     // Generate PDF
     const pdf = await page.pdf({
       format: 'A4',
       printBackground: true,
       margin: {
-        top: '10mm',
-        right: '10mm',
-        bottom: '10mm',
-        left: '10mm',
+        top: '5mm',
+        right: '5mm',
+        bottom: '5mm',
+        left: '5mm',
       },
       preferCSSPageSize: false,
     });
@@ -67,14 +67,20 @@ module.exports = async (req, res) => {
 
   } catch (error) {
     console.error('PDF Generation Error:', error);
+    console.error('Error stack:', error.stack);
     
     if (browser) {
-      await browser.close();
+      try {
+        await browser.close();
+      } catch (closeError) {
+        console.error('Error closing browser:', closeError);
+      }
     }
 
     res.status(500).json({ 
       error: 'Failed to generate PDF',
-      message: error.message 
+      message: error.message,
+      details: error.stack
     });
   }
 };
