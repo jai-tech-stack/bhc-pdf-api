@@ -61,13 +61,13 @@ export default async (req, res) => {
     // Optional: set a reasonable user agent
     await page.setUserAgent('BrandHealthCheckerBot/1.0 (+https://brandhealthchecker.com)');
 
-    // Set HTML content and wait for network idle
-    await page.setContent(htmlContent, { waitUntil: 'networkidle0', timeout: 30000 });
+    // Set HTML content and wait for load (faster than networkidle0)
+    await page.setContent(htmlContent, { waitUntil: 'load', timeout: 8000 });
 
-    // Give fonts/images a moment (optional)
+    // Give fonts/images a brief moment
     await page.evaluate(() => {
       return new Promise((resolve) => {
-        setTimeout(resolve, 200);
+        setTimeout(resolve, 100);
       });
     });
 
