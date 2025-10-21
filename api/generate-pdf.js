@@ -26,12 +26,20 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'HTML content is required' });
     }
 
-    // Launch browser
+    // Launch browser with Vercel-compatible settings
     browser = await puppeteer.launch({
-      args: chromium.args,
+      args: [
+        ...chromium.args,
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--single-process',
+        '--no-zygote'
+      ],
       defaultViewport: chromium.defaultViewport,
       executablePath: await chromium.executablePath(),
-      headless: true,
+      headless: 'new',
       ignoreHTTPSErrors: true,
     });
 
