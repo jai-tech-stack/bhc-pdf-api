@@ -1,162 +1,108 @@
-const chromium = require('@sparticuz/chromium');
+/**
+ * api/generate-pdf.js
+ * Vercel serverless function / API route to generate PDFs using chrome-aws-lambda + puppeteer-core.
+ *
+ * POST JSON body:
+ * {
+ *   "htmlContent": "<html>...</html>",
+ *   "fileName": "Brand_Report.pdf"
+ * }
+ *
+ * Responds with: application/pdf stream (200) on success, JSON {error, message} on failure.
+ */
+const chromium = require('chrome-aws-lambda');
 const puppeteer = require('puppeteer-core');
 
-// Function configuration for Vercel (CommonJS export)
-module.exports.config = {
-  maxDuration: 60,
-};
+/**
+ * Helper: safe send error JSON
+ */
+function sendJsonError(res, status, error, message) {
+  res.status(status).json({ error, message });
+}
 
 module.exports = async (req, res) => {
-  // CORS headers
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST,PUT');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Content-Type, X-Api-Version'
-  );
-
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    return sendJsonError(res, 405, 'method_not_allowed', 'Only POST allowed');
   }
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+  const body = (typeof req.body === 'object') ? req.body : {};
+  const htmlContent = body.htmlContent || '';
+  const fileName = body.fileName || `report-${new Date().toISOString().slice(0,10)}.pdf`;
+
+  if (!htmlContent || typeof htmlContent !== 'string' || htmlContent.trim().length === 0) {
+    return sendJsonError(res, 400, 'bad_request', 'Missing htmlContent in request body');
   }
 
   let browser = null;
 
   try {
-    const { htmlContent, fileName } = req.body;
+    // Acquire executablePath for the serverless chromium binary
+    const executablePath = await chromium.executablePath || null;
 
-    if (!htmlContent) {
-      return res.status(400).json({ error: 'HTML content is required' });
-    }
-
-    console.log('[PDF] Starting generation...');
-    // Ensure LD_LIBRARY_PATH includes chromium's folder (for libnss3 and friends)
-    process.env.LD_LIBRARY_PATH = [
-      ...(process.env.LD_LIBRARY_PATH ? [process.env.LD_LIBRARY_PATH] : []),
-      '/var/task',
-      '/var/task/node_modules/@sparticuz/chromium',
-      '/usr/lib64',
-      '/usr/lib'
-    ].join(':');
-    console.log('[PDF] LD_LIBRARY_PATH:', process.env.LD_LIBRARY_PATH);
-
-    // Optimize chromium args for lower memory usage
-    const chromiumArgs = [
-      ...chromium.args,
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--single-process',
-      '--no-zygote',
-      '--disable-setuid-sandbox',
-      '--disable-software-rasterizer',
-      '--disable-background-networking',
-      '--disable-background-timer-throttling',
-      '--disable-backgrounding-occluded-windows',
-      '--disable-renderer-backgrounding',
-    ];
-
-    // Use sparticuz chromium recommended headless setting
-    const executablePath = await chromium.executablePath();
-    console.log('[PDF] Chromium executable:', executablePath);
-    browser = await puppeteer.launch({
-      args: chromiumArgs,
-      defaultViewport: {
-        width: 1280,
-        height: 720,
-        deviceScaleFactor: 1.5,
-      },
-      executablePath,
-      headless: chromium.headless,
+    // Launch puppeteer-core with chrome-aws-lambda args
+    const launchOptions = {
+      args: (chromium.args || []).concat(['--disable-dev-shm-usage']),
+      defaultViewport: { width: 1280, height: 800 },
       ignoreHTTPSErrors: true,
-    });
+      headless: chromium.headless,
+      executablePath: executablePath || undefined,
+      // Ensure we don't hang forever
+      timeout: 30000
+    };
+
+    // If executablePath is missing, try to fall back to puppeteer's bundled chromium (if available),
+    // but normally in serverless we expect chrome-aws-lambda to provide executablePath.
+    browser = await puppeteer.launch(launchOptions);
 
     const page = await browser.newPage();
-    console.log('[PDF] New page created');
 
-    // Reduce memory by disabling unnecessary features
-    await page.setRequestInterception(true);
-    page.on('request', (request) => {
-      const resourceType = request.resourceType();
-      // Block unnecessary resources to save memory
-      if (['font', 'media'].includes(resourceType)) {
-        request.abort();
-      } else {
-        request.continue();
-      }
+    // Optional: set a reasonable user agent
+    await page.setUserAgent('BrandHealthCheckerBot/1.0 (+https://brandhealthchecker.com)');
+
+    // Set HTML content and wait for network idle
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0', timeout: 30000 });
+
+    // Give fonts/images a moment (optional)
+    await page.evaluate(() => {
+      return new Promise((resolve) => {
+        setTimeout(resolve, 200);
+      });
     });
 
-    await page.setContent(htmlContent, {
-      waitUntil: 'networkidle0',
-      timeout: 25000,
-    });
-
-    console.log('[PDF] Content loaded, generating PDF...');
-
-    // Set response headers for streaming
-    const sanitizedFileName = (fileName || 'report')
-      .replace(/[^a-zA-Z0-9_\-\.]/g, '_')
-      .replace(/\.pdf$/i, '') + '.pdf';
-
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${sanitizedFileName}"`);
-    res.setHeader('Transfer-Encoding', 'chunked');
-
-    // Generate PDF as stream to avoid memory issues
-    const pdfStream = await page.createPDFStream({
+    const pdfBuffer = await page.pdf({
       format: 'A4',
       printBackground: true,
-      margin: {
-        top: '10mm',
-        right: '10mm',
-        bottom: '10mm',
-        left: '10mm',
-      },
-      preferCSSPageSize: false,
+      preferCSSPageSize: true,
+      margin: { top: '14mm', bottom: '14mm', left: '12mm', right: '12mm' }
     });
 
-    // Pipe the stream directly to response
-    pdfStream.pipe(res);
+    // Close page early
+    try { await page.close(); } catch (e) { /* ignore */ }
 
-    pdfStream.on('end', async () => {
-      console.log('[PDF] Generation complete');
-      await browser.close();
-    });
+    // Response headers for direct download
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Length', String(pdfBuffer.length));
 
-    pdfStream.on('error', async (error) => {
-      console.error('[PDF] Stream error:', error);
-      await browser.close();
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'PDF generation failed' });
-      }
-    });
+    // Send binary PDF
+    res.status(200).send(pdfBuffer);
+  } catch (err) {
+    console.error('PDF generation failed:', err);
 
-  } catch (error) {
-    console.error('[PDF] Generation error:', error);
-    console.error('[PDF] Error details:', {
-      message: error.message,
-      name: error.name,
-      stack: error.stack?.split('\n')[0]
-    });
+    // Common cause: missing native libs or chromium launch failed
+    const msg = (err && err.message) ? err.message : String(err);
 
-    if (browser) {
-      try {
-        await browser.close();
-      } catch (closeError) {
-        console.error('[PDF] Browser close error:', closeError);
-      }
+    // If this looks like a chromium library error provide actionable message
+    if (msg.includes('libnss3') || msg.includes('error while loading shared libraries') || msg.includes('Failed to launch the browser process')) {
+      return sendJsonError(res, 500, 'chromium_launch_failed',
+        'Chromium failed to launch. Use chrome-aws-lambda + puppeteer-core on serverless or install system libraries. See https://pptr.dev/troubleshooting');
     }
 
-    if (!res.headersSent) {
-      res.status(500).json({
-        error: 'Failed to generate PDF',
-        message: error.message,
-        type: error.name
-      });
+    return sendJsonError(res, 500, 'pdf_generation_failed', msg);
+  } finally {
+    if (browser) {
+      try { await browser.close(); } catch (e) { /* ignore */ }
     }
   }
 };
