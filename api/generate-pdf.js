@@ -48,26 +48,13 @@ export default async (req, res) => {
 
   try {
     // Launch puppeteer-core with @sparticuz/chromium
-    const launchOptions = {
-      args: [
-        ...chromium.args,
-        '--disable-gpu',
-        '--disable-dev-shm-usage',
-        '--disable-setuid-sandbox',
-        '--no-first-run',
-        '--no-sandbox',
-        '--no-zygote',
-        '--single-process'
-      ],
+    browser = await puppeteer.launch({
+      args: chromium.args,
       defaultViewport: chromium.defaultViewport,
       executablePath: await chromium.executablePath(),
       headless: chromium.headless,
-      ignoreHTTPSErrors: true,
-      timeout: 30000
-    };
-
-    console.log('Launching browser with executablePath:', launchOptions.executablePath);
-    browser = await puppeteer.launch(launchOptions);
+      ignoreHTTPSErrors: true
+    });
 
     const page = await browser.newPage();
 
