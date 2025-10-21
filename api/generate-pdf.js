@@ -1,6 +1,9 @@
 const chromium = require('@sparticuz/chromium');
 const puppeteer = require('puppeteer-core');
 
+// Set font config for Chromium
+chromium.setGraphicsMode = false;
+
 module.exports = async (req, res) => {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -28,18 +31,12 @@ module.exports = async (req, res) => {
 
     // Launch browser with Vercel-compatible settings
     browser = await puppeteer.launch({
-      args: [
-        ...chromium.args,
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--single-process',
-        '--no-zygote'
-      ],
+      args: chromium.args,
       defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: 'new',
+      executablePath: await chromium.executablePath({
+        path: '/tmp'
+      }),
+      headless: chromium.headless,
       ignoreHTTPSErrors: true,
     });
 
