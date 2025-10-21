@@ -21,6 +21,16 @@ function sendJsonError(res, status, error, message) {
 }
 
 export default async (req, res) => {
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', 'https://brandhealthchecker.com');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  // Handle preflight OPTIONS request
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return sendJsonError(res, 405, 'method_not_allowed', 'Only POST allowed');
