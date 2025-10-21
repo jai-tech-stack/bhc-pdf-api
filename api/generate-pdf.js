@@ -1,6 +1,6 @@
 /**
  * api/generate-pdf.js
- * Vercel serverless function / API route to generate PDFs using chrome-aws-lambda + puppeteer-core.
+ * Vercel serverless function / API route to generate PDFs using @sparticuz/chromium + puppeteer-core.
  *
  * POST JSON body:
  * {
@@ -10,7 +10,7 @@
  *
  * Responds with: application/pdf stream (200) on success, JSON {error, message} on failure.
  */
-import chromium from 'chrome-aws-lambda';
+import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
 
 /**
@@ -38,21 +38,18 @@ export default async (req, res) => {
 
   try {
     // Acquire executablePath for the serverless chromium binary
-    const executablePath = await chromium.executablePath || null;
+    const executablePath = await chromium.executablePath();
 
-    // Launch puppeteer-core with chrome-aws-lambda args
+    // Launch puppeteer-core with @sparticuz/chromium args
     const launchOptions = {
-      args: (chromium.args || []).concat(['--disable-dev-shm-usage']),
+      args: chromium.args,
       defaultViewport: { width: 1280, height: 800 },
       ignoreHTTPSErrors: true,
       headless: chromium.headless,
-      executablePath: executablePath || undefined,
-      // Ensure we don't hang forever
+      executablePath,
       timeout: 30000
     };
 
-    // If executablePath is missing, try to fall back to puppeteer's bundled chromium (if available),
-    // but normally in serverless we expect chrome-aws-lambda to provide executablePath.
     browser = await puppeteer.launch(launchOptions);
 
     const page = await browser.newPage();
@@ -96,7 +93,7 @@ export default async (req, res) => {
     // If this looks like a chromium library error provide actionable message
     if (msg.includes('libnss3') || msg.includes('error while loading shared libraries') || msg.includes('Failed to launch the browser process')) {
       return sendJsonError(res, 500, 'chromium_launch_failed',
-        'Chromium failed to launch. Use chrome-aws-lambda + puppeteer-core on serverless or install system libraries. See https://pptr.dev/troubleshooting');
+        'Chromium failed to launch. Using @sparticuz/chromium on Vercel serverless. See https://pptr.dev/troubleshooting');
     }
 
     return sendJsonError(res, 500, 'pdf_generation_failed', msg);
