@@ -10,8 +10,8 @@
  *
  * Responds with: application/pdf stream (200) on success, JSON {error, message} on failure.
  */
-const chromium = require('chrome-aws-lambda');
-const puppeteer = require('puppeteer-core');
+import chromium from 'chrome-aws-lambda';
+import puppeteer from 'puppeteer-core';
 
 /**
  * Helper: safe send error JSON
@@ -20,7 +20,7 @@ function sendJsonError(res, status, error, message) {
   res.status(status).json({ error, message });
 }
 
-module.exports = async (req, res) => {
+export default async (req, res) => {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return sendJsonError(res, 405, 'method_not_allowed', 'Only POST allowed');

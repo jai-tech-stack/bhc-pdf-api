@@ -4,7 +4,7 @@
     "api/generate-pdf.js": {
       "memory": 2048,
       "maxDuration": 60,
-      "runtime": "vercel-nodejs@4.0.0"
+      "runtime": "nodejs18.x"
     }
   }
 }
