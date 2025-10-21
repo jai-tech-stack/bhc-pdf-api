@@ -1,11 +1,4 @@
 {
-  "version": 2,
-  "functions": {
-    "api/generate-pdf.js": {
-      "memory": 2048,
-      "maxDuration": 60,
-      "runtime": "nodejs18.x"
-    }
-  }
+  "version": 2
 }
 
