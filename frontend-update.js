@@ -1,7 +1,7 @@
 // 📝 REPLACE the downloadPDFReportNew function in your bhclive.html with this:
 
 // Configuration - UPDATE THIS AFTER DEPLOYING TO VERCEL
-const PDF_API_URL = 'https://YOUR-PROJECT.vercel.app/api/generate-pdf'; // 👈 CHANGE THIS!
+const PDF_API_URL = 'https://bhc-pdf-api.vercel.app/api/generate-pdf'; // 👈 CHANGE THIS!
 
 async function downloadPDFReportNew(opts = {}) {
   if (isGenerating) {

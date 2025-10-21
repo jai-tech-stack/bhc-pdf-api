@@ -1,15 +1,20 @@
 const chromium = require('@sparticuz/chromium');
 const puppeteer = require('puppeteer-core');
 
-// Set font config for Chromium
-chromium.setGraphicsMode = false;
+// Enable streaming to bypass 4.5MB payload limit
+export const config = {
+  maxDuration: 60,
+};
 
 module.exports = async (req, res) => {
-  // Enable CORS
+  // CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST,PUT');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Content-Type, X-Api-Version'
+  );
 
   if (req.method === 'OPTIONS') {
     res.status(200).end();
@@ -23,68 +28,122 @@ module.exports = async (req, res) => {
   let browser = null;
 
   try {
-    const { htmlContent, assessmentData, fileName } = req.body;
+    const { htmlContent, fileName } = req.body;
 
     if (!htmlContent) {
       return res.status(400).json({ error: 'HTML content is required' });
     }
 
-    // Launch browser with Vercel-compatible settings
+    console.log('[PDF] Starting generation...');
+
+    // Optimize chromium args for lower memory usage
+    const chromiumArgs = [
+      ...chromium.args,
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--single-process',
+      '--no-zygote',
+      '--disable-setuid-sandbox',
+      '--disable-software-rasterizer',
+      '--disable-background-networking',
+      '--disable-background-timer-throttling',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-renderer-backgrounding',
+    ];
+
     browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
+      args: chromiumArgs,
+      defaultViewport: {
+        width: 1280,
+        height: 720,
+        deviceScaleFactor: 1.5, // Balance between quality and memory
+      },
       executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
+      headless: true,
       ignoreHTTPSErrors: true,
     });
 
     const page = await browser.newPage();
-    
-    // Set content
-    await page.setContent(htmlContent, {
-      waitUntil: 'domcontentloaded',
+
+    // Reduce memory by disabling unnecessary features
+    await page.setRequestInterception(true);
+    page.on('request', (request) => {
+      const resourceType = request.resourceType();
+      // Block unnecessary resources to save memory
+      if (['font', 'media'].includes(resourceType)) {
+        request.abort();
+      } else {
+        request.continue();
+      }
     });
 
-    // Wait for any dynamic content to load
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await page.setContent(htmlContent, {
+      waitUntil: 'networkidle0',
+      timeout: 25000,
+    });
 
-    // Generate PDF
-    const pdf = await page.pdf({
+    console.log('[PDF] Content loaded, generating PDF...');
+
+    // Set response headers for streaming
+    const sanitizedFileName = (fileName || 'report')
+      .replace(/[^a-zA-Z0-9_\-\.]/g, '_')
+      .replace(/\.pdf$/i, '') + '.pdf';
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${sanitizedFileName}"`);
+    res.setHeader('Transfer-Encoding', 'chunked');
+
+    // Generate PDF as stream to avoid memory issues
+    const pdfStream = await page.createPDFStream({
       format: 'A4',
       printBackground: true,
       margin: {
-        top: '5mm',
-        right: '5mm',
-        bottom: '5mm',
-        left: '5mm',
+        top: '10mm',
+        right: '10mm',
+        bottom: '10mm',
+        left: '10mm',
       },
       preferCSSPageSize: false,
     });
 
-    await browser.close();
+    // Pipe the stream directly to response
+    pdfStream.pipe(res);
 
-    // Send PDF as response
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName || 'Brand_Health_Report.pdf'}"`);
-    res.status(200).send(pdf);
+    pdfStream.on('end', async () => {
+      console.log('[PDF] Generation complete');
+      await browser.close();
+    });
+
+    pdfStream.on('error', async (error) => {
+      console.error('[PDF] Stream error:', error);
+      await browser.close();
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'PDF generation failed' });
+      }
+    });
 
   } catch (error) {
-    console.error('PDF Generation Error:', error);
-    console.error('Error stack:', error.stack);
-    
+    console.error('[PDF] Generation error:', error);
+    console.error('[PDF] Error details:', {
+      message: error.message,
+      name: error.name,
+      stack: error.stack?.split('\n')[0]
+    });
+
     if (browser) {
       try {
         await browser.close();
       } catch (closeError) {
-        console.error('Error closing browser:', closeError);
+        console.error('[PDF] Browser close error:', closeError);
       }
     }
 
-    res.status(500).json({ 
-      error: 'Failed to generate PDF',
-      message: error.message,
-      details: error.stack
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'Failed to generate PDF',
+        message: error.message,
+        type: error.name
+      });
+    }
   }
 };
-
