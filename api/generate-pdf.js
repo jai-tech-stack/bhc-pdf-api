@@ -47,19 +47,26 @@ export default async (req, res) => {
   let browser = null;
 
   try {
-    // Acquire executablePath for the serverless chromium binary
-    const executablePath = await chromium.executablePath();
-
-    // Launch puppeteer-core with @sparticuz/chromium args
+    // Launch puppeteer-core with @sparticuz/chromium
     const launchOptions = {
-      args: chromium.args,
-      defaultViewport: { width: 1280, height: 800 },
-      ignoreHTTPSErrors: true,
+      args: [
+        ...chromium.args,
+        '--disable-gpu',
+        '--disable-dev-shm-usage',
+        '--disable-setuid-sandbox',
+        '--no-first-run',
+        '--no-sandbox',
+        '--no-zygote',
+        '--single-process'
+      ],
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
       headless: chromium.headless,
-      executablePath,
+      ignoreHTTPSErrors: true,
       timeout: 30000
     };
 
+    console.log('Launching browser with executablePath:', launchOptions.executablePath);
     browser = await puppeteer.launch(launchOptions);
 
     const page = await browser.newPage();

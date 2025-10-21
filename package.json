@@ -9,7 +9,7 @@
     "deploy": "vercel --prod"
   },
   "dependencies": {
-    "@sparticuz/chromium": "^119.0.2",
-    "puppeteer-core": "^21.6.1"
+    "@sparticuz/chromium": "^123.0.1",
+    "puppeteer-core": "^23.0.2"
   }
 }
