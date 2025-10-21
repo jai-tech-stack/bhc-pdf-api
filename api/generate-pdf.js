@@ -1,8 +1,8 @@
 const chromium = require('@sparticuz/chromium');
 const puppeteer = require('puppeteer-core');
 
-// Enable streaming to bypass 4.5MB payload limit
-export const config = {
+// Function configuration for Vercel (CommonJS export)
+module.exports.config = {
   maxDuration: 60,
 };
 
@@ -35,6 +35,15 @@ module.exports = async (req, res) => {
     }
 
     console.log('[PDF] Starting generation...');
+    // Ensure LD_LIBRARY_PATH includes chromium's folder (for libnss3 and friends)
+    process.env.LD_LIBRARY_PATH = [
+      ...(process.env.LD_LIBRARY_PATH ? [process.env.LD_LIBRARY_PATH] : []),
+      '/var/task',
+      '/var/task/node_modules/@sparticuz/chromium',
+      '/usr/lib64',
+      '/usr/lib'
+    ].join(':');
+    console.log('[PDF] LD_LIBRARY_PATH:', process.env.LD_LIBRARY_PATH);
 
     // Optimize chromium args for lower memory usage
     const chromiumArgs = [
@@ -51,19 +60,23 @@ module.exports = async (req, res) => {
       '--disable-renderer-backgrounding',
     ];
 
+    // Use sparticuz chromium recommended headless setting
+    const executablePath = await chromium.executablePath();
+    console.log('[PDF] Chromium executable:', executablePath);
     browser = await puppeteer.launch({
       args: chromiumArgs,
       defaultViewport: {
         width: 1280,
         height: 720,
-        deviceScaleFactor: 1.5, // Balance between quality and memory
+        deviceScaleFactor: 1.5,
       },
-      executablePath: await chromium.executablePath(),
-      headless: true,
+      executablePath,
+      headless: chromium.headless,
       ignoreHTTPSErrors: true,
     });
 
     const page = await browser.newPage();
+    console.log('[PDF] New page created');
 
     // Reduce memory by disabling unnecessary features
     await page.setRequestInterception(true);
