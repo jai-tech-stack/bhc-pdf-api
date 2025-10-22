@@ -59,9 +59,7 @@ export default async (req, res) => {
         '--no-zygote'
       ],
       defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath({
-        path: '/tmp'
-      }),
+      executablePath: await chromium.executablePath(),
       headless: chromium.headless,
       ignoreHTTPSErrors: true
     });
