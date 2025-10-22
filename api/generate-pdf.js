@@ -47,11 +47,21 @@ export default async (req, res) => {
   let browser = null;
 
   try {
-    // Launch puppeteer-core with @sparticuz/chromium
+    // Launch puppeteer-core with @sparticuz/chromium - OPTIMIZED FOR VERCEL
     browser = await puppeteer.launch({
-      args: chromium.args,
+      args: [
+        ...chromium.args,
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--single-process',
+        '--no-zygote'
+      ],
       defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
+      executablePath: await chromium.executablePath({
+        path: '/tmp'
+      }),
       headless: chromium.headless,
       ignoreHTTPSErrors: true
     });
